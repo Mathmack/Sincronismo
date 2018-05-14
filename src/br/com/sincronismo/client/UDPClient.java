@@ -1,23 +1,20 @@
 package br.com.sincronismo.client;
 
 import br.com.sincronismo.server.RelogioServerInterface;
+import br.com.sincronismo.server.RelogioServerInterfaceImpl;
 import java.io.*;
 import java.net.*;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
-import java.sql.Time;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import javax.swing.JOptionPane;
 
-class UDPClient {
+public class UDPClient {
 
-    static ArrayList<RelogioServerInterface> servers;
+    static ArrayList<RelogioServerInterface> serversClientes;
     static PrintWriter log = null;
 
     public static void main(String args[]) throws Exception {
@@ -25,65 +22,78 @@ class UDPClient {
 
         String flag = masterArgs[0]; //flag
         String ip = masterArgs[1].split(":")[0]; //ip:port
-        String port = masterArgs[1].split(":")[1]; //ip:port
+        int port = Integer.parseInt(masterArgs[1].split(":")[1]); //ip:port
         String time = masterArgs[2]; //time
         String d = masterArgs[3]; //d
         String slaves = masterArgs[4]; //slavesfile
         String logFileStr = masterArgs[5]; //logfile
 
-        try {
-            
-            File logFile = new File("C:\\Temp\\log\\" + logFileStr + ".txt");
-            FileWriter fw = new FileWriter(logFile, true);
-            log = new PrintWriter(fw, true);
-            servers = new ArrayList<>();
-            int media = 0;
-            log.println("(" + getHoraAtual() + ") Iniciando a Execução do Client");
-            
-            BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
-            DatagramSocket clientSocket = new DatagramSocket();
-            InetAddress IPAddress = InetAddress.getByName(ip);
-            byte[] sendData = new byte[1024];
-            byte[] receiveData = new byte[1024];
-            
-            //String sentence = inFromUser.readLine();
-            
-            declaraCliente(slaves);
-            
-            int timeInt = converteHora(time);
-            int limit = Integer.parseInt(d);
-            
-            media = calculaMedia(timeInt, limit);
-            ajustaTempo(media);
-            acertarHorario();
-            randomClient();
-            
-            int i = 0;
-            for (RelogioServerInterface server : servers) {
-                sendData[i++] = server.getDiferenca().byteValue();
+        ByteArrayOutputStream outByte = null;
+        ObjectOutputStream oos = null;
+        while (JOptionPane.showConfirmDialog(null, "Deseja avaliar o horario novamente ?") == JOptionPane.YES_OPTION) {
+            try {
+
+                File logFile = new File("C:\\Temp\\log\\" + logFileStr + ".txt");
+                FileWriter fw = new FileWriter(logFile, true);
+                log = new PrintWriter(fw, true);
+                serversClientes = new ArrayList<>();
+                log.println("-----------------------------------------");
+                log.println("(" + getHoraAtual() + ") Iniciando a Execução do Client");
+
+                BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
+                DatagramSocket clientSocket = new DatagramSocket();
+                InetAddress IPAddress = InetAddress.getByName("localhost");
+                byte[] sendData = new byte[1024];
+                byte[] receiveData = new byte[1024];
+
+                declaraCliente(slaves);
+
+                sendData = respostaCliente(time, d);
+
+                outByte = new ByteArrayOutputStream();
+                oos = new ObjectOutputStream(outByte);
+                oos.writeObject(serversClientes.toArray());
+                oos.flush();
+
+                //sendData = outByte.toByteArray();
+                //sendData = ("Olá, sou o Cliente").getBytes();
+                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, 9876);
+                System.out.println("SEND-DATA: " + sendData);
+                clientSocket.send(sendPacket);
+
+                DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length, IPAddress, 9876);
+                clientSocket.receive(receivePacket);
+                
+                log.println("(" + getHoraAtual() + ") Resposta do Servidor");
+                log.println("(" + getHoraAtual() + ") Ajustando o(s) relogio(s) do(s) Cliente(s)...");
+                String modifiedSentence = new String(receivePacket.getData());
+                System.out.println("FROM SERVER:" + modifiedSentence);
+
+                int timeInt = converteHora(time);
+                int limit = Integer.parseInt(d);
+                int media = calculaMedia(timeInt, limit);
+                ajustaTempo(media);
+                acertarHorario();
+                randomClient();
+                log.println("(" + getHoraAtual() + ") Processamento Concluido!");
+                clientSocket.close();
+
+            } catch (Exception ex) {
+                System.out.println(ex);
+                ex.printStackTrace();
+            } finally {
+
+                if (oos != null) {
+                    oos.close();
+                }
+                if (outByte != null) {
+                    outByte.close();
+                }
+
+                log.println("(" + getHoraAtual() + ") Client Encerrado");
+                log.println("-----------------------------------------");
+                log.close();
             }
-//            RelogioServerInterface relogio = new RelogioServerInterfaceImpl();
-//            String clock = TimeControl.getFormat(TimeControl.getNow());
-//            sendData = clock.getBytes();
-
-//            sendData = sentence.getBytes();
-            log.println("(" + getHoraAtual() + ") Enviando dados ao servidor...");
-            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, 9876);
-            clientSocket.send(sendPacket);
-
-            DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-            clientSocket.receive(receivePacket);
-            String modifiedSentence = new String(receivePacket.getData());
-            System.out.println("FROM SERVER:" + modifiedSentence);
-            clientSocket.close();
-
-        } catch (Exception ex) {
-            System.out.println(ex);
-            ex.printStackTrace();
-        } finally {
-            log.println("(" + getHoraAtual() + ") Client Encerrado");
-            log.println("-----------------------------------------");
-            log.close();
         }
     }
 
@@ -91,6 +101,14 @@ class UDPClient {
         //log.println();
         log.println("(" + getHoraAtual() + ") Cliente(s)");
         ArrayList<String> result = new ArrayList<>();
+        if (JOptionPane.showConfirmDialog(null, "Execução Local ?") == JOptionPane.YES_OPTION) {
+            RelogioServerInterface c = new RelogioServerInterfaceImpl();
+            c.setIpPort("localhost:8080");
+            serversClientes.add(c);
+            log.println("(" + getHoraAtual() + ") Execução de Cliente Local");
+            return;
+        }
+        log.println("(" + getHoraAtual() + ") Execução de Cliente UDP");
         try {
             File slavesFile = new File("C:\\Temp\\" + slaves + ".txt");
             FileReader fr = new FileReader(slavesFile);
@@ -106,13 +124,13 @@ class UDPClient {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        
+
         if (!result.isEmpty()) {
-            for (String ipPort : result) {   
-                Registry registry = LocateRegistry.getRegistry(ipPort.split(":")[0]);
-                RelogioServerInterface c = (RelogioServerInterface) registry.lookup("RelogioServerInterfaceImpl");
-                servers.add(c);
-                log.println("(" + getHoraAtual() + ") Cliente <" + ipPort +"> adicionado : "+ c.getTime());
+            for (String ipPort : result) {
+                RelogioServerInterface c = new RelogioServerInterfaceImpl();
+                c.setIpPort(ipPort);
+                serversClientes.add(c);
+                log.println("(" + getHoraAtual() + ") Cliente <" + ipPort + "> adicionado : " + c.getTime());
             }
         }
     }
@@ -121,7 +139,7 @@ class UDPClient {
         log.println("(" + getHoraAtual() + ") Calculando a Media");
         log.println();
         int total = 0;
-        for (RelogioServerInterface server : servers) {
+        for (RelogioServerInterface server : serversClientes) {
             //int diferenca = server.getTime() - servers.get(0).getTime();
             int diferenca = server.getTime() - time;
             if (diferenca < d) {
@@ -131,7 +149,7 @@ class UDPClient {
             }
             total += server.getDiferenca();
         }
-        int media = total / servers.size();
+        int media = total / serversClientes.size();
         log.println("(" + getHoraAtual() + ") Media: " + media);
         return media;
     }
@@ -139,14 +157,14 @@ class UDPClient {
     public static void ajustaTempo(int media) throws RemoteException {
         log.println();
         log.println("(" + getHoraAtual() + ") Ajustando o Relogio");
-        for (RelogioServerInterface server : servers) {
+        for (RelogioServerInterface server : serversClientes) {
             server.setTime(media + (-1 * server.getDiferenca()));
             log.println("(" + getHoraAtual() + ") " + media + (-1 * server.getDiferenca()));
         }
     }
 
     public static void randomClient() throws RemoteException {
-        for (RelogioServerInterface server : servers) {
+        for (RelogioServerInterface server : serversClientes) {
             server.random();
         }
     }
@@ -154,7 +172,7 @@ class UDPClient {
     public static void acertarHorario() throws RemoteException {
         log.println();
         log.println("(" + getHoraAtual() + ") Acertando o horario");
-        for (RelogioServerInterface server : servers) {
+        for (RelogioServerInterface server : serversClientes) {
             int inteira = server.getTime() / 60;
             int resto = server.getTime() % 60;
             log.println("(" + getHoraAtual() + ") " + inteira + ":" + resto);
@@ -170,9 +188,31 @@ class UDPClient {
         }
         return -1;
     }
-    
+
     private static String getHoraAtual() {
         SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
         return sdf.format(new Date());
+    }
+
+    public static byte[] respostaCliente(String time, String d) {
+        byte[] sendData = new byte[1024];
+        try {
+
+            int i = 0;
+            for (RelogioServerInterface server : serversClientes) {
+                System.out.println("Diferença: " + server.getDiferenca());
+                sendData[i++] = server.getDiferenca().byteValue();
+            }
+//            RelogioServerInterface relogio = new RelogioServerInterfaceImpl();
+//            String clock = TimeControl.getFormat(TimeControl.getNow());
+//            sendData = clock.getBytes();
+
+//            sendData = sentence.getBytes();
+            log.println("(" + getHoraAtual() + ") Enviando dados ao servidor...");
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return sendData;
     }
 }

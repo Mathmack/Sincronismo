@@ -1,6 +1,7 @@
 package br.com.sincronismo.server;
 
 
+import java.io.Serializable;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 
@@ -8,13 +9,15 @@ import java.rmi.server.UnicastRemoteObject;
  *
  * @author 31507646
  */
-public class RelogioServerInterfaceImpl extends UnicastRemoteObject implements RelogioServerInterface {
+public class RelogioServerInterfaceImpl extends UnicastRemoteObject implements RelogioServerInterface, Serializable {
     
     private Integer hora;
     private Integer diferenca;
     
-    public RelogioServerInterfaceImpl() throws RemoteException{
-        
+    private String ip;
+    private int port;
+    
+    public RelogioServerInterfaceImpl() throws RemoteException {
         Integer i = (int) (Math.random() * 23);
         Integer j = (int) (Math.random() * 59);
         
@@ -50,6 +53,15 @@ public class RelogioServerInterfaceImpl extends UnicastRemoteObject implements R
         hora = (i * 60) + j;
     }
     
+    @Override
+    public void setIpPort(String ipPort) {
+        this.ip = ipPort.split(":")[0];
+        this.port = Integer.parseInt(ipPort.split(":")[1]);
+    }
     
+    @Override
+    public String[] getIpPort() {
+        return new String[] {ip, port + ""};
+    }
     
 }

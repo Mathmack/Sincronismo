@@ -19,5 +19,7 @@ public interface RelogioServerInterface extends Remote {
     public void setDiferenca(Integer di) throws RemoteException;
     public Integer getDiferenca() throws RemoteException;
     public void random() throws RemoteException;
+    public void setIpPort(String ipPort) throws RemoteException;
+    public String[] getIpPort() throws RemoteException;
     
 }
